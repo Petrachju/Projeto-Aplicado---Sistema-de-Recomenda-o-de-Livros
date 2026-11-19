@@ -1,21 +1,21 @@
 # 📚 Sistema de Recomendação Personalizada de Livros
 
-> Projeto desenvolvido no âmbito da disciplina **Projeto Aplicado III** (Faculdade de Computação e Informática — Universidade Presbiteriana Mackenzie)[span_0](start_span)[span_0](end_span).
+> Projeto desenvolvido no âmbito da disciplina **Projeto Aplicado III** (Faculdade de Computação e Informática — Universidade Presbiteriana Mackenzie.
 
 ## 🎯 Problema e Contexto de Negócio
 
-Em livrarias e plataformas literárias com amplos catálogos, o excesso de opções frequentemente gera **indecisão de compra** (*information overload*)[span_1](start_span)[span_1](end_span). Sem referências claras ou curadoria personalizada, o cliente hesita e acaba desistindo da aquisição.
+Em livrarias e plataformas literárias com amplos catálogos, o excesso de opções frequentemente gera **indecisão de compra** (*information overload*). Sem referências claras ou curadoria personalizada, o cliente hesita e acaba desistindo da aquisição.
 
-**Nossa Solução:** Um sistema de recomendação baseado em **Aprendizado de Máquina** que analisa o perfil, o histórico de avaliações e as preferências do leitor para sugerir títulos alinhados às suas características — aumentando a conversão de vendas, o engajamento e a descoberta de obras além dos *bestsellers* tradicionais[span_2](start_span)[span_2](end_span).
+**Nossa Solução:** Um sistema de recomendação baseado em **Aprendizado de Máquina** que analisa o perfil, o histórico de avaliações e as preferências do leitor para sugerir títulos alinhados às suas características — aumentando a conversão de vendas, o engajamento e a descoberta de obras além dos *bestsellers* tradicionais.
 
 ---
 
 ## 🧠 Arquitetura e Metodologia
 
-O motor de recomendação combina duas abordagens complementares em uma **arquitetura híbrida**[span_3](start_span)[span_3](end_span):
+O motor de recomendação combina duas abordagens complementares em uma **arquitetura híbrida**
 
-1. **Filtragem Colaborativa (*Collaborative Filtering*):** Utiliza Decomposição em Valores Singulares (**SVD**) para extrair fatores latentes das interações entre usuários e livros, identificando padrões de gosto compartilhados[span_4](start_span)[span_4](end_span).
-2. **Filtragem Baseada em Conteúdo (*Content-Based Filtering*):** Emprega vetorização **TF-IDF** e **Similaridade do Cosseno** sobre os metadados das obras (título, autor, editora e ano) para recomendar títulos similares e mitigar o problema de *cold-start* (itens com poucas avaliações)[span_5](start_span)[span_5](end_span).
+1. **Filtragem Colaborativa (*Collaborative Filtering*):** Utiliza Decomposição em Valores Singulares (**SVD**) para extrair fatores latentes das interações entre usuários e livros, identificando padrões de gosto compartilhados.
+2. **Filtragem Baseada em Conteúdo (*Content-Based Filtering*):** Emprega vetorização **TF-IDF** e **Similaridade do Cosseno** sobre os metadados das obras (título, autor, editora e ano) para recomendar títulos similares e mitigar o problema de *cold-start* (itens com poucas avaliações).
 
 ### 📊 Resultados Alcançados
 
