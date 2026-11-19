@@ -44,15 +44,13 @@ O motor de recomendação combina duas abordagens complementares em uma **arquit
 ├── README.md
 ├── requirements.txt
 ├── data/
-│   ├── raw/                 # Dados brutos originais
-│   └── processed/           # Dados higienizados e filtrados (k-core)
+│   └── livros.csv                 (4.886 registros)
 ├── notebooks/
 │   ├── 01_analise_exploratoria.ipynb
-│   ├── 02_prova_de_conceito_baseline.ipynb
-│   └── 03_modelo_otimizado_hibrido.ipynb
-├── src/
-│   ├── data_processing.py   # Pipeline de limpeza e matriz usuário-item
-│   ├── models.py            # Implementação dos modelos SVD e Híbrido
-│   └── evaluation.py        # Cálculo de RMSE, MAE, Precision@K e Recall@K
+│   ├── 02_prova_de_conceito_tfidf.ipynb
+│   └── 03_avaliacao_baselines.ipynb
+├── app/
+│   └── app.py                     (aplicação Streamlit)
 └── docs/
     └── relatorio_final.pdf
+
