@@ -37,7 +37,7 @@ O motor de recomendação combina duas abordagens complementares em uma **arquit
 * **Base de Dados:** *Book-Crossing Dataset* (`BX-Users`, `BX-Books`, `BX-Book-Ratings`)[span_10](start_span)[span_10](end_span)
 
 ---
-
+## **LINK YOUTUBE** https://www.youtube.com/watch?v=-LaISlJ2758
 ## 📁 Estrutura do Repositório
 
 ```text
