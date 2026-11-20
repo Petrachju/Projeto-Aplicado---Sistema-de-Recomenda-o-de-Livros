@@ -38,6 +38,8 @@ O motor de recomendação combina duas abordagens complementares em uma **arquit
 
 ---
 ## **LINK YOUTUBE** https://www.youtube.com/watch?v=-LaISlJ2758
+---
+##**Errata** A estrutura do código foi toda desenvolvida no Colab, não espelha a estrutura abaixo.
 ## 📁 Estrutura do Repositório
 
 ```text
