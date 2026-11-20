@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BookNode AI — Recomendador Literário TF-IDF & Nós Temáticos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+          },
+          colors: {
+            paper: '#FAF7F2',
+            ink: '#1E1B18',
+            parchment: '#F2ECE1',
+            terracotta: '#C85A32',
+            forest: '#2D5A4C',
+            amberbook: '#D98A2B',
+            indigoNode: '#3B4D8C',
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #FAF7F2;
+      color: #1E1B18;
+      background-image: radial-gradient(#E5DDD0 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      border: 1px solid #E6DEC8;
+      box-shadow: 0 10px 30px -10px rgba(30, 27, 24, 0.08);
+    }
+    .tag-chip {
+      transition: all 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .tag-chip:hover {
+      transform: translateY(-1px);
+    }
+    .tag-chip.selected {
+      background-color: #1E1B18;
+      color: #FAF7F2;
+      border-color: #1E1B18;
+      box-shadow: 0 4px 12px rgba(30, 27, 24, 0.22);
+    }
+    @keyframes popIn {
+      0% { opacity: 0; transform: translateY(10px) scale(0.98); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .animate-pop {
+      animation: popIn 0.32s ease-out forwards;
+    }
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(200, 90, 50, 0.35); }
+      50% { box-shadow: 0 0 0 8px rgba(200, 90, 50, 0); }
+    }
+    .pulse-cta {
+      animation: pulseGlow 2.4s infinite;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
+    ::-webkit-scrollbar-track { background: #F2ECE1; }
+    ::-webkit-scrollbar-thumb { background: #C9BFA9; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #A89C84; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-terracotta selection:text-white">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Top Navigation & Gamification HUD -->
+  <header class="sticky top-0 z-40 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#E4DBC8]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-4">
+      <!-- Brand -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-ink text-paper flex items-center justify-center shadow-md">
+          <svg class="w-6 h-6 text-amberbook" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-serif text-xl sm:text-2xl font-bold tracking-tight text-ink">BookNode <span class="text-terracotta">TF-IDF</span></h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-forest/10 text-forest border border-forest/20">
+              Protótipo Interativo
+            </span>
+          </div>
+          <p class="text-xs text-stone-500">Filtragem Baseada em Conteúdo • Nós Temáticos & Similaridade do Cosseno</p>
+        </div>
+      </div>
+
+      <!-- Gamification HUD -->
+      <div class="flex items-center gap-3 sm:gap-5 bg-white px-3.5 py-2 rounded-2xl border border-[#E6DEC8] shadow-sm">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amberbook/15 border border-amberbook/30 flex items-center justify-center font-bold text-amberbook text-sm" id="hud-level-badge">
+            Nv.1
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-ink" id="hud-rank-title">Leitor Iniciante</span>
+              <span class="text-[11px] font-semibold text-terracotta" id="hud-xp-text">0 / 100 XP</span>
+            </div>
+            <div class="w-28 sm:w-36 h-2 bg-parchment rounded-full overflow-hidden mt-1">
+              <div id="hud-xp-bar" class="h-full bg-gradient-to-r from-amberbook to-terracotta rounded-full transition-all duration-500" style="width: 5%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="h-7 w-px bg-[#E6DEC8]"></div>
+
+        <!-- Badges & Shelf Buttons -->
+        <button onclick="toggleModal('modal-conquistas')" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-parchment hover:bg-[#E8DFCE] text-xs font-semibold text-ink transition">
+          <span>🏆</span>
+          <span class="hidden md:inline">Conquistas</span>
+          <span id="hud-badges-count" class="px-1.5 py-0.2 bg-ink text-white rounded-full text-[10px]">0/6</span>
+        </button>
+
+        <button onclick="toggleModal('modal-estante')" class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-forest text-white hover:bg-forest/90 text-xs font-semibold transition shadow-sm">
+          <span>🔖</span>
+          <span class="hidden md:inline">Minha Estante</span>
+          <span id="hud-shelf-count" class="px-1.5 py-0.2 bg-white text-forest rounded-full text-[10px] font-bold">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- Dataset Status & CSV Upload Bar -->
+    <section class="glass-card rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div class="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-parchment font-semibold text-ink">
+          📚 Base Ativa: <strong id="stat-books-count" class="text-terracotta">0</strong> livros
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-parchment font-semibold text-ink">
+          🕸️ Nós Temáticos: <strong id="stat-themes-count" class="text-indigoNode">0</strong> temas
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-parchment font-semibold text-ink">
+          🔤 Vocabulário TF-IDF: <strong id="stat-vocab-count" class="text-forest">0</strong> termos
+        </span>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+        <label class="cursor-pointer inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-parchment border border-[#D8CEB8] text-xs font-semibold text-ink transition shadow-sm">
+          <svg class="w-4 h-4 text-terracotta" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <span>Importar CSV Próprio</span>
+          <input type="file" id="csv-upload" accept=".csv" class="hidden" onchange="handleCSVUpload(event)" />
+        </label>
+        <button onclick="resetToDefaultDataset()" id="btn-reset-db" class="hidden px-3 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-xs font-semibold text-ink transition">
+          Restaurar Base Padrão
+        </button>
+        <button onclick="toggleModal('modal-sobre')" class="px-3 py-2 rounded-xl bg-parchment hover:bg-[#E6DEC8] text-xs font-semibold text-stone-700 transition">
+          ℹ️ Como o Modelo Funciona
+        </button>
+      </div>
+    </section>
+
+    <!-- Main 12-Col Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- LEFT COLUMN (5 cols): Theme Nodes + Keyword Selector + Query Builder -->
+      <div class="lg:col-span-5 space-y-5">
+
+        <!-- Mode Switcher Card -->
+        <div class="glass-card rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="font-serif text-lg font-bold text-ink">1. Construtor de Consulta</h2>
+            <div class="inline-flex rounded-xl bg-parchment p-1 border border-[#E4DBC8]">
+              <button id="tab-mode-keywords" onclick="setSearchMode('keywords')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-white shadow-sm transition">
+                Por Palavras-Chave
+              </button>
+              <button id="tab-mode-book" onclick="setSearchMode('book')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:text-ink transition">
+                Por Livro-Semente
+              </button>
+            </div>
+          </div>
+
+          <!-- MODE A: KEYWORD & THEME NODE BUILDER -->
+          <div id="panel-mode-keywords" class="space-y-4">
+            <p class="text-xs text-stone-600 leading-relaxed">
+              Explore os <strong>Nós Temáticos</strong> abaixo. Cada nó agrupa livros que compartilham palavras de maior incidência em suas descrições (<code class="bg-parchment px-1 rounded">Description</code> + <code class="bg-parchment px-1 rounded">Theme</code>). Selecione palavras para montar seu vetor de interesse:
+            </p>
+
+            <!-- Theme Node Pills -->
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-2">Selecione um Nó Temático para Explorar Palavras:</label>
+              <div id="theme-nodes-container" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Frequent Words of Active Theme -->
+            <div class="bg-parchment/70 rounded-xl p-3.5 border border-[#E6DEC8]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-ink" id="active-theme-label">Palavras de maior incidência no tema:</span>
+                <button onclick="selectTop3FromTheme()" class="text-[11px] font-semibold text-terracotta hover:underline">
+                  + Pegar Top 3 do Nó
+                </button>
+              </div>
+              <div id="theme-keywords-container" class="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto pr-1"></div>
+            </div>
+
+            <!-- Custom Extra Keyword Input -->
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">Adicionar termo livre dos metadados (título, autor ou tema):</label>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  id="custom-keyword-input"
+                  placeholder="Ex: dragon, memory, murder, detective, philosophy..."
+                  class="flex-1 px-3.5 py-2 rounded-xl bg-white border border-[#D8CEB8] text-xs focus:outline-none focus:border-terracotta"
+                  onkeydown="if(event.key==='Enter') addCustomKeyword()"
+                />
+                <button onclick="addCustomKeyword()" class="px-3.5 py-2 rounded-xl bg-ink text-white text-xs font-semibold hover:bg-stone-800 transition">
+                  + Incluir
+                </button>
+              </div>
+            </div>
+
+            <!-- Selected Query Vector Chips -->
+            <div class="bg-white rounded-xl p-3.5 border-2 border-dashed border-[#D8CEB8]">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold text-ink">🎯 Vetor de Busca Ativo (<span id="selected-count">0</span> palavras):</span>
+                <button onclick="clearSelectedKeywords()" class="text-[11px] font-semibold text-stone-400 hover:text-terracotta">
+                  Limpar tudo
+                </button>
+              </div>
+              <div id="selected-keywords-container" class="flex flex-wrap gap-1.5 min-h-[32px] items-center">
+                <span class="text-xs text-stone-400 italic">Clique nas palavras acima para montar sua consulta...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- MODE B: SEED BOOK SELECTOR -->
+          <div id="panel-mode-book" class="hidden space-y-4">
+            <p class="text-xs text-stone-600 leading-relaxed">
+              Escolha um <strong>Livro-Semente</strong> do catálogo. O motor calculará a similaridade do cosseno entre o vetor TF-IDF completo dele e os demais livros da base:
+            </p>
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">Livro de Referência:</label>
+              <select id="seed-book-select" onchange="previewSeedBook()" class="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D8CEB8] text-xs font-medium text-ink focus:outline-none focus:border-terracotta"></select>
+            </div>
+            <div id="seed-book-preview" class="bg-parchment/80 rounded-xl p-3.5 border border-[#E6DEC8] text-xs space-y-1.5"></div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="pt-1 flex flex-col sm:flex-row gap-2.5">
+            <button onclick="runRecommendation()" class="flex-1 py-3 px-4 rounded-xl bg-terracotta hover:bg-[#B44D27] text-white font-bold text-sm shadow-lg shadow-terracotta/20 transition flex items-center justify-center gap-2 pulse-cta">
+              <span>✨ Gerar Top 5 Recomendações</span>
+            </button>
+            <button onclick="runRandomBaselineComparison()" title="Comparar com Baseline Aleatório" class="py-3 px-3.5 rounded-xl bg-parchment hover:bg-[#E5DBC7] border border-[#D8CEB8] text-ink font-semibold text-xs transition flex items-center justify-center gap-1.5">
+              <span>🎲 Baseline Aleatório</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mini Mission / Gamification Challenge Card -->
+        <div class="glass-card rounded-2xl p-4 bg-gradient-to-br from-white to-parchment/60">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-xl bg-forest/15 text-forest flex items-center justify-center text-lg shrink-0">
+              🧭
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-forest">Missão de Curadoria Ativa</h3>
+                <span class="text-[11px] font-bold text-amberbook">+35 XP</span>
+              </div>
+              <p id="active-mission-text" class="text-xs text-stone-700 mt-1 font-medium">
+                Combine palavras de 2 temas diferentes para descobrir uma ponte intertemática entre livros!
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN (7 cols): Interactive Node Graph + Top 5 Recommendations -->
+      <div class="lg:col-span-7 space-y-5">
+
+        <!-- Interactive Visual Node Graph -->
+        <div class="glass-card rounded-2xl p-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="font-serif text-lg font-bold text-ink">2. Mapa de Conexão dos Nós Temáticos</h2>
+              <p class="text-xs text-stone-500">Distância e espessura das arestas representam o score de similaridade TF-IDF com sua busca</p>
+            </div>
+            <div class="flex items-center gap-3 text-[11px] font-semibold">
+              <span class="inline-flex items-center gap-1 text-forest"><span class="w-2.5 h-2.5 rounded-full bg-forest"></span> Mesmo Tema</span>
+              <span class="inline-flex items-center gap-1 text-amberbook"><span class="w-2.5 h-2.5 rounded-full bg-amberbook"></span> Ponte Intertemática</span>
+            </div>
+          </div>
+
+          <div class="relative w-full h-64 sm:h-72 rounded-xl bg-[#F6F1E7] border border-[#E4DBC8] overflow-hidden">
+            <svg id="node-graph-svg" class="w-full h-full" viewBox="0 0 700 300" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#C85A32" stop-opacity="0.28" />
+                  <stop offset="100%" stop-color="#C85A32" stop-opacity="0" />
+                </radialGradient>
+              </defs>
+              <g id="graph-edges"></g>
+              <g id="graph-nodes"></g>
+            </svg>
+            <div id="graph-empty-overlay" class="absolute inset-0 flex flex-col items-center justify-center text-center p-6 bg-[#F6F1E7]/85">
+              <span class="text-3xl mb-2">🕸️</span>
+              <p class="font-serif font-bold text-ink text-base">Seu Grafo de Recomendação Aguarda</p>
+              <p class="text-xs text-stone-500 max-w-md mt-1">Selecione palavras-chave nos nós temáticos ao lado e clique em <strong>"Gerar Top 5 Recomendações"</strong> para visualizar os livros mais próximos.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Evaluation Metrics Strip (Appears after search) -->
+        <div id="metrics-strip" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="glass-card rounded-xl p-3 text-center">
+            <span class="text-[11px] font-semibold text-stone-500 block">Similaridade Média @5</span>
+            <strong id="metric-avg-sim" class="text-lg font-bold text-terracotta">0.000</strong>
+          </div>
+          <div class="glass-card rounded-xl p-3 text-center">
+            <span class="text-[11px] font-semibold text-stone-500 block">Aderência Temática @5</span>
+            <strong id="metric-theme-adh" class="text-lg font-bold text-forest">0%</strong>
+          </div>
+          <div class="glass-card rounded-xl p-3 text-center">
+            <span class="text-[11px] font-semibold text-stone-500 block">Termos Coincidentes</span>
+            <strong id="metric-matched-terms" class="text-lg font-bold text-indigoNode">0</strong>
+          </div>
+          <div class="glass-card rounded-xl p-3 text-center">
+            <span class="text-[11px] font-semibold text-stone-500 block">Modo Avaliado</span>
+            <strong id="metric-mode-label" class="text-xs font-bold text-ink uppercase tracking-wide mt-1 block">TF-IDF</strong>
+          </div>
+        </div>
+
+        <!-- Top 5 Results List -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="font-serif text-lg font-bold text-ink" id="results-heading">3. Top 5 Livros Recomendados</h2>
+            <span id="results-subtitle" class="text-xs text-stone-500">Ordenados por Similaridade do Cosseno</span>
+          </div>
+
+          <div id="recommendations-list" class="space-y-3">
+            <!-- Placeholder initial state -->
+            <div class="glass-card rounded-2xl p-8 text-center space-y-3">
+              <div class="w-12 h-12 rounded-2xl bg-parchment mx-auto flex items-center justify-center text-2xl">📖</div>
+              <h3 class="font-serif font-bold text-ink">Pronto para descobrir sua próxima leitura?</h3>
+              <p class="text-xs text-stone-500 max-w-md mx-auto">
+                Experimente clicar em um tema à esquerda (como <em>Fantasia</em>, <em>Ficção Científica</em> ou <em>Mistério & Thriller</em>), escolha 3 ou 4 palavras-chave e veja o algoritmo TF-IDF ranquear os 5 livros mais alinhados.
+              </p>
+              <button onclick="runQuickDemo()" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-ink text-white text-xs font-semibold hover:bg-stone-800 transition">
+                ⚡ Rodar Demonstração Rápida
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: Conquistas (Gamification) -->
+  <div id="modal-conquistas" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-paper border border-[#E4DBC8] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-[#E4DBC8] pb-3">
+        <div>
+          <h3 class="font-serif text-xl font-bold text-ink">🏆 Conquistas do Curador</h3>
+          <p class="text-xs text-stone-500">Desbloqueie emblemas explorando nós temáticos e recomendando livros</p>
+        </div>
+        <button onclick="toggleModal('modal-conquistas')" class="w-8 h-8 rounded-lg bg-parchment hover:bg-stone-300 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div id="badges-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Minha Estante (Saved Books) -->
+  <div id="modal-estante" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-paper border border-[#E4DBC8] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-[#E4DBC8] pb-3">
+        <div>
+          <h3 class="font-serif text-xl font-bold text-ink">🔖 Minha Estante Literária</h3>
+          <p class="text-xs text-stone-500">Livros recomendados que você salvou durante sua exploração</p>
+        </div>
+        <button onclick="toggleModal('modal-estante')" class="w-8 h-8 rounded-lg bg-parchment hover:bg-stone-300 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div id="shelf-list" class="space-y-2.5 max-h-80 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Sobre o Modelo TF-IDF -->
+  <div id="modal-sobre" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-paper border border-[#E4DBC8] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-[#E4DBC8] pb-3">
+        <h3 class="font-serif text-xl font-bold text-ink">🧠 Arquitetura do Modelo TF-IDF</h3>
+        <button onclick="toggleModal('modal-sobre')" class="w-8 h-8 rounded-lg bg-parchment hover:bg-stone-300 flex items-center justify-center font-bold">✕</button>
+      </div>
+      <div class="text-xs text-stone-700 space-y-2.5 leading-relaxed">
+        <p><strong>1. Lógica de Nós Temáticos:</strong> Cada categoria (<code class="bg-parchment px-1 rounded">Theme</code>) funciona como um nó agregador que reúne livros cujas descrições (<code class="bg-parchment px-1 rounded">Description</code>) compartilham palavras-chave de alta incidência.</p>
+        <p><strong>2. Texto Composto:</strong> Para cada livro, o pré-processamento combina <code class="bg-parchment px-1 rounded">Book-Title</code>, <code class="bg-parchment px-1 rounded">Book-Author</code>, <code class="bg-parchment px-1 rounded">Theme</code> (com peso dobrado), <code class="bg-parchment px-1 rounded">Description</code> e as <code class="bg-parchment px-1 rounded">Palavras mais frequentes</code> do nó.</p>
+        <p><strong>3. Vetorização TF-IDF & Similaridade:</strong> O motor extrai unigramas e bigramas, calcula os pesos TF-IDF normalizados em L2 e mede a <strong>Similaridade do Cosseno</strong> entre o vetor de consulta do usuário e cada obra do catálogo, retornando o Top 5.</p>
+        <p><strong>4. Formato CSV Aceito:</strong> Você pode importar qualquer arquivo <code class="bg-parchment px-1 rounded">.csv</code> (separado por vírgula ou ponto-e-vírgula) contendo as colunas <code class="bg-parchment px-1 rounded">Book-Title</code>, <code class="bg-parchment px-1 rounded">Book-Author</code>, <code class="bg-parchment px-1 rounded">Theme</code> e <code class="bg-parchment px-1 rounded">Description</code>.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. BASE DE DADOS EMBUTIDA (CATÁLOGO LITERÁRIO RICO COM METADADOS COMPLETOS)
+    // =========================================================================
+    const DEFAULT_BOOKS = [
+      {
+        "Book-Title": "The Terminal Man",
+        "Book-Author": "Michael Crichton",
+        "Theme": "Ficção Científica & Tecno-Thriller",
+        "Description": "A brilliant computer scientist suffers from violent seizures and undergoes an experimental brain implant surgery connected to a microcomputer, creating a dangerous feedback loop between machine control and human mind.",
+        "Palavras mais frequentes": "brain computer scientist control technology experiment mind system"
+      },
+      {
+        "Book-Title": "Neuromancer",
+        "Book-Author": "William Gibson",
+        "Theme": "Ficção Científica & Tecno-Thriller",
+        "Description": "A washed-up computer hacker is hired by a mysterious employer for one last digital heist in cyberspace against a powerful artificial intelligence orbiting Earth.",
+        "Palavras mais frequentes": "computer hacker cyberspace artificial intelligence digital system network"
+      },
+      {
+        "Book-Title": "Dark Matter",
+        "Book-Author": "Blake Crouch",
+        "Theme": "Ficção Científica & Tecno-Thriller",
+        "Description": "A quantum physicist is abducted into an alternate reality where his life took a radically different path, forcing him to navigate a multiverse of parallel worlds to rescue his family.",
+        "Palavras mais frequentes": "quantum reality multiverse scientist parallel worlds memory mind"
+      },
+      {
+        "Book-Title": "Prey",
+        "Book-Author": "Michael Crichton",
+        "Theme": "Ficção Científica & Tecno-Thriller",
+        "Description": "In a remote desert laboratory, a swarm of self-replicating nanorobots escapes containment and evolves predatory artificial intelligence capabilities.",
+        "Palavras mais frequentes": "laboratory technology artificial intelligence swarm experiment control system"
+      },
+      {
+        "Book-Title": "Dune",
+        "Book-Author": "Frank Herbert",
+        "Theme": "Ficção Científica & Tecno-Thriller",
+        "Description": "On the desert planet Arrakis, young Paul Atreides navigates political betrayal, ancient prophecy, giant sandworms, and control over the universe's most valuable spice.",
+        "Palavras mais frequentes": "planet empire desert prophecy power control universe survival"
+      },
+      {
+        "Book-Title": "Stone of Farewell",
+        "Book-Author": "Tad Williams",
+        "Theme": "Fantasia Épica",
+        "Description": "Scattered across the frozen land of Osten Ard, heroes must unite ancient magic, lost swords, and forgotten alliances to resist the dark immortal Storm King.",
+        "Palavras mais frequentes": "magic kingdom ancient sword prophecy dark realm dragon"
+      },
+      {
+        "Book-Title": "The Dragon Token",
+        "Book-Author": "Melanie Rawn",
+        "Theme": "Fantasia Épica",
+        "Description": "Sunrunner sorcerers and dragon princes face war and succession intrigue across desert kingdoms as ancient magic awakens to protect the realm.",
+        "Palavras mais frequentes": "dragon magic kingdom war ancient prophecy realm power"
+      },
+      {
+        "Book-Title": "Tailchaser's Song",
+        "Book-Author": "Tad Williams",
+        "Theme": "Fantasia Épica",
+        "Description": "A courageous young cat embarks on an epic mythical quest through dark underground realms and ancient forests to rescue vanished companions from an evil lord.",
+        "Palavras mais frequentes": "quest ancient dark realm forest myth journey magic"
+      },
+      {
+        "Book-Title": "The Name of the Wind",
+        "Book-Author": "Patrick Rothfuss",
+        "Theme": "Fantasia Épica",
+        "Description": "A gifted musician and arcanist recounts his journey from orphaned street survivor to legendary magician searching for the secret name of the wind and ancient killers.",
+        "Palavras mais frequentes": "magic legend university secret ancient song power journey"
+      },
+      {
+        "Book-Title": "The Way of Kings",
+        "Book-Author": "Brandon Sanderson",
+        "Theme": "Fantasia Épica",
+        "Description": "On a storm-wracked world of ancient shardblades and fallen knights, a slave soldier and a highprince uncover lost magic and impending desolation.",
+        "Palavras mais frequentes": "magic ancient war knights storm realm kingdom power"
+      },
+      {
+        "Book-Title": "Roses Are Red",
+        "Book-Author": "James Patterson",
+        "Theme": "Mistério & Thriller Policial",
+        "Description": "Detective Alex Cross tracks a ruthless criminal mastermind orchestrating precision bank robberies and deadly psychological traps across Washington.",
+        "Palavras mais frequentes": "detective murder killer investigation crime psychological suspense police"
+      },
+      {
+        "Book-Title": "The Chamber",
+        "Book-Author": "John Grisham",
+        "Theme": "Mistério & Thriller Policial",
+        "Description": "A young idealistic lawyer takes on the final death row appeal of his estranged grandfather, uncovering decades of racial violence, legal secrets, and courtroom tension.",
+        "Palavras mais frequentes": "lawyer courtroom trial secret justice crime guilt investigation"
+      },
+      {
+        "Book-Title": "The Girl Who Loved Tom Gordon",
+        "Book-Author": "Stephen King",
+        "Theme": "Mistério & Thriller Policial",
+        "Description": "Lost deep in the unforgiving Appalachian wilderness, a nine-year-old girl battles starvation, hallucinations, and a stalking presence in the dark woods.",
+        "Palavras mais frequentes": "dark woods survival fear psychological isolation mystery forest"
+      },
+      {
+        "Book-Title": "In the Dark",
+        "Book-Author": "Richard Laymon",
+        "Theme": "Mistério & Thriller Policial",
+        "Description": "A young librarian finds an envelope of cash accompanied by terrifying instructions from an unseen sadistic game master forcing her into deadly nocturnal challenges.",
+        "Palavras mais frequentes": "dark game killer fear suspense psychological trap mystery"
+      },
+      {
+        "Book-Title": "The Silent Patient",
+        "Book-Author": "Alex Michaelides",
+        "Theme": "Mistério & Thriller Policial",
+        "Description": "A famous painter shoots her husband and never speaks another word, prompting a forensic psychotherapist to unravel her hidden diary and obsessive truth.",
+        "Palavras mais frequentes": "psychological murder secret truth therapist obsession mystery investigation"
+      },
+      {
+        "Book-Title": "Meditations",
+        "Book-Author": "Marcus Aurelius",
+        "Theme": "Filosofia & História",
+        "Description": "Personal stoic reflections written by the Roman Emperor on virtue, discipline, mortality, resilience, and maintaining inner tranquility amid chaos.",
+        "Palavras mais frequentes": "stoic virtue wisdom mind nature history power discipline"
+      },
+      {
+        "Book-Title": "Sapiens: A Brief History of Humankind",
+        "Book-Author": "Yuval Noah Harari",
+        "Theme": "Filosofia & História",
+        "Description": "An exploration of how Homo sapiens conquered the earth through cognitive revolutions, shared myths, empires, money, and scientific progress.",
+        "Palavras mais frequentes": "history society civilization human myth empire knowledge evolution"
+      },
+      {
+        "Book-Title": "The Republic",
+        "Book-Author": "Plato",
+        "Theme": "Filosofia & História",
+        "Description": "Socratic dialogues examining the nature of justice, the ideal city-state, the allegory of the cave, and the philosopher-king's pursuit of truth.",
+        "Palavras mais frequentes": "justice truth philosophy virtue society wisdom mind state"
+      },
+      {
+        "Book-Title": "The Art of War",
+        "Book-Author": "Sun Tzu",
+        "Theme": "Filosofia & História",
+        "Description": "Ancient Chinese military treatise detailing timeless principles of strategy, deception, adaptability, leadership, and victory without unnecessary conflict.",
+        "Palavras mais frequentes": "strategy war leadership power discipline ancient wisdom victory"
+      },
+      {
+        "Book-Title": "Crime and Punishment",
+        "Book-Author": "Fyodor Dostoevsky",
+        "Theme": "Literatura Clássica",
+        "Description": "In nineteenth-century Saint Petersburg, an impoverished former student commits a calculated murder and descends into intense moral guilt, psychological torment, and redemption.",
+        "Palavras mais frequentes": "guilt moral soul society psychological love redemption tragedy"
+      },
+      {
+        "Book-Title": "1984",
+        "Book-Author": "George Orwell",
+        "Theme": "Literatura Clássica",
+        "Description": "Under totalitarian surveillance where Big Brother rewrites history and controls language, Winston Smith rebels through forbidden love and independent thought.",
+        "Palavras mais frequentes": "totalitarian control truth power society freedom surveillance mind"
+      },
+      {
+        "Book-Title": "Pride and Prejudice",
+        "Book-Author": "Jane Austen",
+        "Theme": "Literatura Clássica",
+        "Description": "Elizabeth Bennet navigates class expectations, family reputation, and initial misunderstandings with the proud Mr. Darcy in Regency England.",
+        "Palavras mais frequentes": "love society family pride marriage class character reputation"
+      },
+      {
+        "Book-Title": "Frankenstein",
+        "Book-Author": "Mary Shelley",
+        "Theme": "Literatura Clássica",
+        "Description": "An ambitious young scientist creates a sentient creature from assembled body parts, unleashing tragedy, isolation, and philosophical questions about creator and responsibility.",
+        "Palavras mais frequentes": "scientist creation tragedy isolation monster nature moral guilt"
+      },
+      {
+        "Book-Title": "Dom Casmurro",
+        "Book-Author": "Machado de Assis",
+        "Theme": "Literatura Clássica",
+        "Description": "Bento Santiago narrates his childhood love for Capitu and the consuming jealousy and doubt over betrayal that shadow his memory and marriage.",
+        "Palavras mais frequentes": "love memory jealousy doubt marriage truth society betrayal"
+      }
+    ];
+
+    // =========================================================================
+    // 2. STOPWORDS (PT + EN) & MOTOR TF-IDF + SIMILARIDADE DO COSSENO
+    // =========================================================================
+    const STOPWORDS = new Set([
+      // English
+      "the","and","of","to","in","a","is","that","for","it","as","was","with","on","by","he","she","at","from","an","be","this","which","or","are","but","not","his","her","their","they","who","into","through","over","after","one","last","most","other","more","some","such","no","nor","only","own","same","so","than","too","very","can","will","just","should","now","its","has","have","had","about","out","up","down","them","him","when","where","while","how","all","any","both","each","few","new","young","old",
+      // Portuguese
+      "de","a","o","que","e","do","da","em","um","para","com","não","uma","os","no","se","na","por","mais","as","dos","como","mas","foi","ao","ele","das","tem","à","seu","sua","ou","ser","quando","muito","há","nos","já","está","eu","também","só","pelo","pela","até","isso","ela","entre","era","depois","sem","mesmo","aos","ter","seus","quem","nas","me","esse","eles","estão","você","tinha","foram","essa","num","nem","suas","meu","às","minha","têm","numa","pelos","elas","havia","seja","qual","será","nós","tenho","lhe","deles","essas","esses","pelas","este","fosse","dele"
+    ]);
+
+    const THEME_PALETTE = [
+      { bg: "bg-[#2D5A4C]/12", text: "text-[#2D5A4C]", border: "border-[#2D5A4C]/30", hex: "#2D5A4C" },
+      { bg: "bg-[#C85A32]/12", text: "text-[#C85A32]", border: "border-[#C85A32]/30", hex: "#C85A32" },
+      { bg: "bg-[#3B4D8C]/12", text: "text-[#3B4D8C]", border: "border-[#3B4D8C]/30", hex: "#3B4D8C" },
+      { bg: "bg-[#D98A2B]/15", text: "text-[#9A5D12]", border: "border-[#D98A2B]/35", hex: "#D98A2B" },
+      { bg: "bg-[#7A3E65]/12", text: "text-[#7A3E65]", border: "border-[#7A3E65]/30", hex: "#7A3E65" },
+      { bg: "bg-[#1F6E8C]/12", text: "text-[#1F6E8C]", border: "border-[#1F6E8C]/30", hex: "#1F6E8C" }
+    ];
+
+    // App Global State
+    let booksData = [];
+    let tfidfModel = null;
+    let themeStats = {};
+    let themeColorMap = {};
+    let activeTheme = "";
+    let selectedKeywords = [];
+    let searchMode = "keywords"; // 'keywords' | 'book'
+    let savedBooks = new Set();
+
+    // Gamification State
+    const gamification = {
+      xp: 0,
+      searchesCount: 0,
+      themesExplored: new Set(),
+      usedSeedMode: false,
+      usedBaseline: false,
+      interthematicFound: false,
+      uploadedCSV: false,
+      unlockedBadges: new Set()
+    };
+
+    const BADGES_CATALOG = [
+      { id: "first_node", icon: "🌱", title: "Primeiro Nó Conectado", desc: "Realizou sua primeira recomendação TF-IDF." },
+      { id: "interthematic", icon: "🌉", title: "Ponte Intertemática", desc: "Descobriu livros de temas distintos conectados por vocabulário comum." },
+      { id: "seed_explorer", icon: "📖", title: "Caçador de Semelhanças", desc: "Usou o Modo Livro-Semente para encontrar obras irmãs." },
+      { id: "scientist", icon: "🧪", title: "Cientista de Dados", desc: "Comparou o modelo TF-IDF contra o Baseline Aleatório." },
+      { id: "collector", icon: "🔖", title: "Curador de Estante", desc: "Salvou 3 ou mais livros recomendados na sua estante." },
+      { id: "data_importer", icon: "📂", title: "Arquiteto de Bases", desc: "Importou um catálogo CSV próprio para treinar o modelo." }
+    ];
+
+    // Clean text (matching the Python pipeline)
+    function limparTexto(texto) {
+      if (!texto || typeof texto !== "string") return "";
+      return texto
+        .toLowerCase()
+        .replace(/[^a-zà-ú0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    // Extract unigrams and bigrams filtering stopwords
+    function tokenizeNGrams(cleanText, includeBigrams = true) {
+      const words = cleanText
+        .split(" ")
+        .filter(w => w.length > 2 && !STOPWORDS.has(w) && !/^\d+$/.test(w));
+
+      const tokens = [...words];
+      if (includeBigrams && words.length > 1) {
+        for (let i = 0; i < words.length - 1; i++) {
+          tokens.push(`${words[i]} ${words[i + 1]}`);
+        }
+      }
+      return tokens;
+    }
+
+    // Build TF-IDF Model & Theme Node Incidence Map
+    function buildTFIDFModel(rawBooks) {
+      booksData = rawBooks
+        .map((b, idx) => {
+          const title = String(b["Book-Title"] || b["title"] || "").trim();
+          const author = String(b["Book-Author"] || b["author"] || "Autor Desconhecido").trim();
+          const theme = String(b["Theme"] || b["theme"] || "Geral").trim() || "Geral";
+          const desc = String(b["Description"] || b["description"] || "").trim();
+          const freqWords = String(b["Palavras mais frequentes"] || "").trim();
+
+          return {
+            id: idx,
+            "Book-Title": title,
+            "Book-Author": author,
+            "Theme": theme,
+            "Description": desc,
+            "Palavras mais frequentes": freqWords
+          };
+        })
+        .filter(b => b["Book-Title"] !== "" && (b["Description"] !== "" || b["Theme"] !== ""));
+
+      // Step 1: Compute word incidence per Theme (nós temáticos)
+      themeStats = {};
+      booksData.forEach(book => {
+        const t = book["Theme"];
+        if (!themeStats[t]) {
+          themeStats[t] = { count: 0, wordFreq: {}, topWords: [] };
+        }
+        themeStats[t].count += 1;
+
+        const sourceForIncidence = limparTexto(`${book["Description"]} ${book["Palavras mais frequentes"]}`);
+        const unigrams = tokenizeNGrams(sourceForIncidence, false);
+        const uniqueInBook = new Set(unigrams);
+        unigrams.forEach(w => {
+          themeStats[t].wordFreq[w] = (themeStats[t].wordFreq[w] || 0) + 1;
+        });
+        uniqueInBook.forEach(w => {
+          themeStats[t].wordFreq[w] = (themeStats[t].wordFreq[w] || 0) + 0.5;
+        });
+      });
+
+      const themesList = Object.keys(themeStats);
+      themeColorMap = {};
+      themesList.forEach((t, i) => {
+        themeColorMap[t] = THEME_PALETTE[i % THEME_PALETTE.length];
+        const sortedWords = Object.entries(themeStats[t].wordFreq)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 16)
+          .map(([word, score]) => ({ word, count: Math.round(score) }));
+        themeStats[t].topWords = sortedWords;
+      });
+
+      // Step 2: Build composite document text (mirroring Python logic)
+      const docTokensList = booksData.map(book => {
+        const titleClean = limparTexto(book["Book-Title"]);
+        const authorClean = limparTexto(book["Book-Author"]);
+        const themeClean = limparTexto(book["Theme"]);
+        const descClean = limparTexto(book["Description"]);
+        const themeTopClean = book["Palavras mais frequentes"]
+          ? limparTexto(book["Palavras mais frequentes"])
+          : themeStats[book["Theme"]].topWords.slice(0, 8).map(x => x.word).join(" ");
+
+        book._themeTopWordsDisplay = themeTopClean;
+
+        const composite = `${titleClean} ${authorClean} ${themeClean} ${themeClean} ${descClean} ${themeTopClean}`.trim();
+        return tokenizeNGrams(composite, true);
+      });
+
+      // Step 3: Compute DF (Document Frequency)
+      const N = docTokensList.length;
+      const dfCounts = {};
+      docTokensList.forEach(tokens => {
+        const uniqueTokens = new Set(tokens);
+        uniqueTokens.forEach(tok => {
+          dfCounts[tok] = (dfCounts[tok] || 0) + 1;
+        });
+      });
+
+      // Filter vocabulary (min_df = 1 for small datasets, 2 for larger datasets; max_df = 0.85)
+      const minDf = N >= 30 ? 2 : 1;
+      const maxDfCount = Math.max(2, Math.floor(N * 0.85));
+      const vocab = Object.keys(dfCounts).filter(
+        tok => dfCounts[tok] >= minDf && dfCounts[tok] <= maxDfCount
+      );
+      const vocabSet = new Set(vocab);
+
+      // Compute smooth IDF: log((1 + N) / (1 + df)) + 1 (scikit-learn default)
+      const idf = {};
+      vocab.forEach(tok => {
+        idf[tok] = Math.log((1 + N) / (1 + dfCounts[tok])) + 1;
+      });
+
+      // Step 4: Build L2-normalized TF-IDF sparse vectors for each book
+      const docVectors = docTokensList.map(tokens => {
+        const tf = {};
+        tokens.forEach(tok => {
+          if (vocabSet.has(tok)) {
+            tf[tok] = (tf[tok] || 0) + 1;
+          }
+        });
+
+        const vec = {};
+        let normSq = 0;
+        Object.keys(tf).forEach(tok => {
+          const val = tf[tok] * idf[tok];
+          vec[tok] = val;
+          normSq += val * val;
+        });
+
+        const norm = Math.sqrt(normSq) || 1;
+        Object.keys(vec).forEach(tok => {
+          vec[tok] /= norm;
+        });
+        return vec;
+      });
+
+      tfidfModel = { vocab, vocabSet, idf, docVectors };
+
+      // Update UI counters
+      document.getElementById("stat-books-count").textContent = booksData.length;
+      document.getElementById("stat-themes-count").textContent = themesList.length;
+      document.getElementById("stat-vocab-count").textContent = vocab.length;
+
+      if (!activeTheme || !themeStats[activeTheme]) {
+        activeTheme = themesList[0] || "";
+      }
+
+      renderThemeNodes();
+      renderThemeKeywords();
+      populateSeedBookSelect();
+    }
+
+    // Vectorize user query string into L2-normalized TF-IDF vector
+    function vectorizeQuery(queryText) {
+      const clean = limparTexto(queryText);
+      const tokens = tokenizeNGrams(clean, true);
+      const tf = {};
+
+      tokens.forEach(tok => {
+        if (tfidfModel.vocabSet.has(tok)) {
+          tf[tok] = (tf[tok] || 0) + 1;
+        } else {
+          // Partial prefix match fallback for user-typed terms
+          const partial = tfidfModel.vocab.find(v => v.startsWith(tok) && tok.length >= 4);
+          if (partial) tf[partial] = (tf[partial] || 0) + 0.8;
+        }
+      });
+
+      const vec = {};
+      let normSq = 0;
+      Object.keys(tf).forEach(tok => {
+        const val = tf[tok] * (tfidfModel.idf[tok] || 1);
+        vec[tok] = val;
+        normSq += val * val;
+      });
+
+      const norm = Math.sqrt(normSq) || 1;
+      Object.keys(vec).forEach(tok => {
+        vec[tok] /= norm;
+      });
+      return vec;
+    }
+
+    // Cosine similarity between two sparse vectors
+    function cosineSimilaritySparse(vecA, vecB) {
+      let dot = 0;
+      const keysA = Object.keys(vecA);
+      for (let i = 0; i < keysA.length; i++) {
+        const k = keysA[i];
+        if (vecB[k] !== undefined) {
+          dot += vecA[k] * vecB[k];
+        }
+      }
+      return dot;
+    }
+
+    // =========================================================================
+    // 3. UI RENDERING: THEME NODES & KEYWORD CHIPS
+    // =========================================================================
+    function renderThemeNodes() {
+      const container = document.getElementById("theme-nodes-container");
+      container.innerHTML = "";
+
+      Object.keys(themeStats).forEach(theme => {
+        const isActive = theme === activeTheme;
+        const palette = themeColorMap[theme];
+        const btn = document.createElement("button");
+        btn.className = `px-3 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1.5 ${
+          isActive
+            ? "bg-ink text-white border-ink shadow-sm"
+            : `${palette.bg} ${palette.text} ${palette.border} hover:opacity-85`
+        }`;
+        btn.innerHTML = `
+          <span>●</span>
+          <span>${theme}</span>
+          <span class="px-1.5 py-0.2 rounded-full text-[10px] ${isActive ? "bg-white/20 text-white" : "bg-white/70 text-ink"}">${themeStats[theme].count}</span>
+        `;
+        btn.onclick = () => {
+          activeTheme = theme;
+          gamification.themesExplored.add(theme);
+          renderThemeNodes();
+          renderThemeKeywords();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function renderThemeKeywords() {
+      const container = document.getElementById("theme-keywords-container");
+      const label = document.getElementById("active-theme-label");
+      container.innerHTML = "";
+
+      if (!activeTheme || !themeStats[activeTheme]) return;
+      label.textContent = `Palavras mais incidentes em "${activeTheme}":`;
+
+      themeStats[activeTheme].topWords.forEach(({ word, count }) => {
+        const isSelected = selectedKeywords.some(item => item.word === word);
+        const chip = document.createElement("button");
+        chip.className = `tag-chip px-2.5 py-1 rounded-lg text-xs font-medium border flex items-center gap-1.5 ${
+          isSelected
+            ? "selected"
+            : "bg-white text-ink border-[#DCD2BE] hover:border-ink"
+        }`;
+        chip.innerHTML = `
+          <span>${word}</span>
+          <span class="text-[10px] opacity-65">(${count})</span>
+        `;
+        chip.onclick = () => toggleKeyword(word, activeTheme);
+        container.appendChild(chip);
+      });
+    }
+
+    function toggleKeyword(word, originTheme = "Livre") {
+      const idx = selectedKeywords.findIndex(k => k.word === word);
+      if (idx >= 0) {
+        selectedKeywords.splice(idx, 1);
+      } else {
+        selectedKeywords.push({ word, theme: originTheme });
+        addXP(5, null);
+      }
+      renderThemeKeywords();
+      renderSelectedKeywords();
+    }
+
+    function selectTop3FromTheme() {
+      if (!activeTheme || !themeStats[activeTheme]) return;
+      const top3 = themeStats[activeTheme].topWords.slice(0, 3);
+      top3.forEach(({ word }) => {
+        if (!selectedKeywords.some(k => k.word === word)) {
+          selectedKeywords.push({ word, theme: activeTheme });
+        }
+      });
+      addXP(10, `Top 3 palavras de "${activeTheme}" adicionadas!`);
+      renderThemeKeywords();
+      renderSelectedKeywords();
+    }
+
+    function addCustomKeyword() {
+      const input = document.getElementById("custom-keyword-input");
+      const clean = limparTexto(input.value);
+      if (!clean) return;
+      if (!selectedKeywords.some(k => k.word === clean)) {
+        selectedKeywords.push({ word: clean, theme: "Termo Livre" });
+        addXP(8, `Termo "${clean}" adicionado ao vetor!`);
+      }
+      input.value = "";
+      renderThemeKeywords();
+      renderSelectedKeywords();
+    }
+
+    function clearSelectedKeywords() {
+      selectedKeywords = [];
+      renderThemeKeywords();
+      renderSelectedKeywords();
+    }
+
+    function renderSelectedKeywords() {
+      const container = document.getElementById("selected-keywords-container");
+      document.getElementById("selected-count").textContent = selectedKeywords.length;
+      container.innerHTML = "";
+
+      if (selectedKeywords.length === 0) {
+        container.innerHTML = `<span class="text-xs text-stone-400 italic">Clique nas palavras acima para montar sua consulta...</span>`;
+        return;
+      }
+
+      selectedKeywords.forEach(({ word, theme }) => {
+        const chip = document.createElement("span");
+        chip.className = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-terracotta text-white text-xs font-semibold shadow-xs animate-pop";
+        chip.innerHTML = `
+          <span>${word}</span>
+          <button onclick="toggleKeyword('${word}')" class="hover:text-amber-200 font-bold ml-0.5">✕</button>
+        `;
+        chip.title = `Origem: ${theme}`;
+        container.appendChild(chip);
+      });
+    }
+
+    // Mode Switching
+    function setSearchMode(mode) {
+      searchMode = mode;
+      const btnKw = document.getElementById("tab-mode-keywords");
+      const btnBk = document.getElementById("tab-mode-book");
+      const panelKw = document.getElementById("panel-mode-keywords");
+      const panelBk = document.getElementById("panel-mode-book");
+
+      if (mode === "keywords") {
+        btnKw.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-white shadow-sm transition";
+        btnBk.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:text-ink transition";
+        panelKw.classList.remove("hidden");
+        panelBk.classList.add("hidden");
+      } else {
+        btnBk.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-ink text-white shadow-sm transition";
+        btnKw.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-stone-600 hover:text-ink transition";
+        panelBk.classList.remove("hidden");
+        panelKw.classList.add("hidden");
+        previewSeedBook();
+      }
+    }
+
+    function populateSeedBookSelect() {
+      const select = document.getElementById("seed-book-select");
+      select.innerHTML = "";
+      booksData.forEach((b, idx) => {
+        const opt = document.createElement("option");
+        opt.value = idx;
+        opt.textContent = `${b["Book-Title"]} — ${b["Book-Author"]} [${b["Theme"]}]`;
+        select.appendChild(opt);
+      });
+      previewSeedBook();
+    }
+
+    function previewSeedBook() {
+      const select = document.getElementById("seed-book-select");
+      const preview = document.getElementById("seed-book-preview");
+      const idx = parseInt(select.value || "0", 10);
+      const book = booksData[idx];
+      if (!book) return;
+
+      preview.innerHTML = `
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-ink">${book["Book-Title"]}</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-ink text-white">${book["Theme"]}</span>
+        </div>
+        <div class="text-stone-500">Autor: <strong>${book["Book-Author"]}</strong></div>
+        <p class="text-stone-700 leading-relaxed">${book["Description"]}</p>
+        <div class="text-[11px] text-forest font-medium pt-1">
+          Palavras-chave do nó: <em>${book._themeTopWordsDisplay}</em>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 4. RECOMMENDATION ENGINE EXECUTION & BASELINE COMPARISON
+    // =========================================================================
+    function runRecommendation() {
+      let queryVec = null;
+      let excludeIdx = -1;
+      let referenceThemes = new Set();
+      let queryLabel = "";
+      let queryTokensDisplay = [];
+
+      if (searchMode === "keywords") {
+        if (selectedKeywords.length === 0) {
+          showToast("⚠️ Selecione pelo menos 1 palavra-chave ou use a Demonstração Rápida!", "amber");
+          return;
+        }
+        const queryStr = selectedKeywords.map(k => k.word).join(" ");
+        queryVec = vectorizeQuery(queryStr);
+        queryLabel = selectedKeywords.slice(0, 3).map(k => k.word).join(" + ");
+        queryTokensDisplay = selectedKeywords.map(k => k.word);
+        selectedKeywords.forEach(k => {
+          if (themeStats[k.theme]) referenceThemes.add(k.theme);
+        });
+      } else {
+        const select = document.getElementById("seed-book-select");
+        excludeIdx = parseInt(select.value || "0", 10);
+        const seedBook = booksData[excludeIdx];
+        queryVec = tfidfModel.docVectors[excludeIdx];
+        queryLabel = seedBook["Book-Title"];
+        referenceThemes.add(seedBook["Theme"]);
+        queryTokensDisplay = tokenizeNGrams(
+          limparTexto(`${seedBook["Title"]} ${seedBook["Theme"]} ${seedBook["Description"]}`),
+          false
+        );
+        gamification.usedSeedMode = true;
+      }
+
+      // Rank all candidate books by Cosine Similarity
+      const scored = booksData
+        .map((book, idx) => {
+          if (idx === excludeIdx) return null;
+          const sim = cosineSimilaritySparse(queryVec, tfidfModel.docVectors[idx]);
+
+          // Find overlapping terms for explainability
+          const bookTokens = new Set(
+            tokenizeNGrams(
+              limparTexto(`${book["Book-Title"]} ${book["Book-Author"]} ${book["Theme"]} ${book["Description"]} ${book._themeTopWordsDisplay}`),
+              true
+            )
+          );
+          const matchedTerms = queryTokensDisplay.filter(t => bookTokens.has(t));
+
+          return {
+            book,
+            score: sim,
+            matchedTerms: [...new Set(matchedTerms)],
+            sameTheme: referenceThemes.size > 0 ? referenceThemes.has(book["Theme"]) : book["Theme"] === activeTheme
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score);
+
+      const top5 = scored.slice(0, 5);
+
+      // Update Gamification & Missions
+      gamification.searchesCount += 1;
+      addXP(20, "Top 5 livros gerados via TF-IDF!");
+
+      if (top5.some(r => !r.sameTheme) && referenceThemes.size > 0) {
+        gamification.interthematicFound = true;
+      }
+      if (referenceThemes.size >= 2) {
+        addXP(35, "🎯 Missão concluída: Ponte Intertemática!");
+      }
+      checkAchievements();
+
+      renderResults(top5, queryLabel, "TF-IDF + Cosseno");
+      renderNodeGraph(top5, queryLabel);
+    }
+
+    function runRandomBaselineComparison() {
+      const shuffled = [...booksData].sort(() => Math.random() - 0.5).slice(0, 5);
+      const refTheme = activeTheme || booksData[0]["Theme"];
+
+      const baselineResults = shuffled.map(book => ({
+        book,
+        score: Number((Math.random() * 0.08).toFixed(4)),
+        matchedTerms: [],
+        sameTheme: book["Theme"] === refTheme
+      }));
+
+      gamification.usedBaseline = true;
+      addXP(15, "Comparação com Baseline Aleatório executada!");
+      checkAchievements();
+
+      renderResults(baselineResults, "Sorteio Aleatório (Baseline)", "Baseline Aleatório");
+      renderNodeGraph(baselineResults, "Baseline Aleatório");
+    }
+
+    function runQuickDemo() {
+      setSearchMode("keywords");
+      selectedKeywords = [];
+      const firstTheme = Object.keys(themeStats)[0];
+      activeTheme = firstTheme;
+      const sampleWords = themeStats[firstTheme].topWords.slice(0, 3).map(w => w.word);
+      sampleWords.forEach(w => selectedKeywords.push({ word: w, theme: firstTheme }));
+      renderThemeNodes();
+      renderThemeKeywords();
+      renderSelectedKeywords();
+      runRecommendation();
+    }
+
+    // =========================================================================
+    // 5. RENDER RESULTS CARDS & METRICS STRIP
+    // =========================================================================
+    function highlightMatches(text, terms) {
+      if (!terms || terms.length === 0) return text;
+      let highlighted = text;
+      terms.forEach(term => {
+        if (term.length < 3) return;
+        const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+        highlighted = highlighted.replace(
+          regex,
+          `<mark class="bg-amberbook/25 text-ink font-semibold px-1 rounded">$1</mark>`
+        );
+      });
+      return highlighted;
+    }
+
+    function renderResults(results, queryLabel, modeName) {
+      const list = document.getElementById("recommendations-list");
+      const metricsStrip = document.getElementById("metrics-strip");
+      list.innerHTML = "";
+      metricsStrip.classList.remove("hidden");
+
+      // Calculate top-5 metrics
+      const avgSim = results.reduce((acc, r) => acc + r.score, 0) / (results.length || 1);
+      const themeAdh = (results.filter(r => r.sameTheme).length / (results.length || 1)) * 100;
+      const totalMatched = results.reduce((acc, r) => acc + r.matchedTerms.length, 0);
+
+      document.getElementById("metric-avg-sim").textContent = avgSim.toFixed(4);
+      document.getElementById("metric-theme-adh").textContent = `${Math.round(themeAdh)}%`;
+      document.getElementById("metric-matched-terms").textContent = totalMatched;
+      document.getElementById("metric-mode-label").textContent = modeName;
+      document.getElementById("results-subtitle").textContent = `Consulta: "${queryLabel}"`;
+
+      results.forEach((item, idx) => {
+        const { book, score, matchedTerms, sameTheme } = item;
+        const palette = themeColorMap[book["Theme"]] || THEME_PALETTE[0];
+        const pct = Math.min(100, Math.max(4, Math.round(score * 100)));
+        const isSaved = savedBooks.has(book["Book-Title"]);
+
+        const card = document.createElement("div");
+        card.className = "glass-card rounded-2xl p-4 sm:p-5 hover:border-terracotta/50 transition animate-pop";
+        card.style.animationDelay = `${idx * 65}ms`;
+
+        card.innerHTML = `
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <div class="flex items-start gap-3.5">
+              <!-- Rank Badge -->
+              <div class="w-10 h-10 rounded-xl ${idx === 0 ? "bg-terracotta text-white" : "bg-ink text-paper"} flex flex-col items-center justify-center shrink-0 shadow-sm">
+                <span class="text-[9px] uppercase tracking-wider opacity-75">Rank</span>
+                <span class="text-sm font-bold leading-none">#${idx + 1}</span>
+              </div>
+
+              <div class="space-y-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="font-serif text-base sm:text-lg font-bold text-ink leading-snug">${book["Book-Title"]}</h3>
+                  <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${palette.bg} ${palette.text} ${palette.border}">
+                    ${book["Theme"]}
+                  </span>
+                  ${
+                    sameTheme
+                      ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-forest/15 text-forest">✓ Mesmo Nó</span>`
+                      : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amberbook/20 text-[#9A5D12]">🌉 Ponte Temática</span>`
+                  }
+                </div>
+                <p class="text-xs text-stone-500 font-medium">por <strong class="text-stone-700">${book["Book-Author"]}</strong></p>
+              </div>
+            </div>
+
+            <!-- Score & Bookmark -->
+            <div class="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
+              <div class="text-right">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-stone-400 block">Similaridade</span>
+                <span class="text-base font-bold text-terracotta">${score.toFixed(4)}</span>
+              </div>
+              <button
+                onclick="toggleSaveBook('${book["Book-Title"].replace(/'/g, "\\'")}')"
+                class="px-3 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1 ${
+                  isSaved
+                    ? "bg-forest text-white border-forest"
+                    : "bg-white hover:bg-parchment text-ink border-[#D8CEB8]"
+                }"
+              >
+                <span>${isSaved ? "🔖 Salvo" : "+ Salvar"}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Compatibility Bar -->
+          <div class="mt-3 flex items-center gap-3">
+            <div class="flex-1 h-1.5 bg-parchment rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-700" style="width: ${pct}%; background-color: ${palette.hex};"></div>
+            </div>
+            <span class="text-[11px] font-semibold text-stone-500">${pct}% afinidade vetorial</span>
+          </div>
+
+          <!-- Highlighted Description -->
+          <p class="mt-3 text-xs text-stone-700 leading-relaxed">
+            ${highlightMatches(book["Description"], matchedTerms)}
+          </p>
+
+          <!-- Matched Terms Footer -->
+          <div class="mt-3 pt-2.5 border-t border-[#EFE8DA] flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span class="font-semibold text-stone-500">Termos em comum:</span>
+            ${
+              matchedTerms.length > 0
+                ? matchedTerms.map(t => `<span class="px-2 py-0.5 rounded-md bg-parchment text-ink font-medium">${t}</span>`).join("")
+                : `<span class="text-stone-400 italic">Proximidade por contexto vetorial / tema</span>`
+            }
+          </div>
+        `;
+        list.appendChild(card);
+      });
+    }
+
+    // =========================================================================
+    // 6. INTERACTIVE SVG NODE GRAPH VISUALIZATION
+    // =========================================================================
+    function renderNodeGraph(results, centerTitle) {
+      document.getElementById("graph-empty-overlay").classList.add("hidden");
+      const edgesG = document.getElementById("graph-edges");
+      const nodesG = document.getElementById("graph-nodes");
+      edgesG.innerHTML = "";
+      nodesG.innerHTML = "";
+
+      const cx = 350;
+      const cy = 150;
+
+      // Center glow
+      const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      glow.setAttribute("cx", cx);
+      glow.setAttribute("cy", cy);
+      glow.setAttribute("r", 70);
+      glow.setAttribute("fill", "url(#centerGlow)");
+      edgesG.appendChild(glow);
+
+      // Position top 5 nodes radially around center
+      const angles = [-Math.PI / 2, -Math.PI / 8, Math.PI / 4, (3 * Math.PI) / 4, (9 * Math.PI) / 8];
+
+      results.forEach((item, i) => {
+        const angle = angles[i % angles.length];
+        // Higher score = closer to center node
+        const normalizedScore = Math.min(1, Math.max(0.05, item.score));
+        const radius = 128 - normalizedScore * 45;
+        const nx = cx + Math.cos(angle) * radius * 1.45;
+        const ny = cy + Math.sin(angle) * radius * 0.85;
+
+        const strokeColor = item.sameTheme ? "#2D5A4C" : "#D98A2B";
+        const strokeWidth = 1.5 + normalizedScore * 4.5;
+
+        // Edge line
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", cx);
+        line.setAttribute("y1", cy);
+        line.setAttribute("x2", nx);
+        line.setAttribute("y2", ny);
+        line.setAttribute("stroke", strokeColor);
+        line.setAttribute("stroke-width", strokeWidth);
+        line.setAttribute("stroke-opacity", "0.55");
+        if (!item.sameTheme) line.setAttribute("stroke-dasharray", "5,4");
+        edgesG.appendChild(line);
+
+        // Edge Score Label
+        const midX = (cx + nx) / 2;
+        const midY = (cy + ny) / 2;
+        const scoreBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        scoreBg.setAttribute("x", midX - 20);
+        scoreBg.setAttribute("y", midY - 9);
+        scoreBg.setAttribute("width", 40);
+        scoreBg.setAttribute("height", 16);
+        scoreBg.setAttribute("rx", 6);
+        scoreBg.setAttribute("fill", "#FAF7F2");
+        scoreBg.setAttribute("stroke", strokeColor);
+        scoreBg.setAttribute("stroke-width", "1");
+        edgesG.appendChild(scoreBg);
+
+        const scoreTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        scoreTxt.setAttribute("x", midX);
+        scoreTxt.setAttribute("y", midY + 3);
+        scoreTxt.setAttribute("text-anchor", "middle");
+        scoreTxt.setAttribute("font-size", "9.5");
+        scoreTxt.setAttribute("font-weight", "700");
+        scoreTxt.setAttribute("fill", "#1E1B18");
+        scoreTxt.textContent = item.score.toFixed(2);
+        edgesG.appendChild(scoreTxt);
+
+        // Book Node Circle
+        const nodeCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        nodeCircle.setAttribute("cx", nx);
+        nodeCircle.setAttribute("cy", ny);
+        nodeCircle.setAttribute("r", 20);
+        nodeCircle.setAttribute("fill", strokeColor);
+        nodeCircle.setAttribute("stroke", "#FFFFFF");
+        nodeCircle.setAttribute("stroke-width", "2.5");
+        nodesG.appendChild(nodeCircle);
+
+        // Rank inside circle
+        const rankTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        rankTxt.setAttribute("x", nx);
+        rankTxt.setAttribute("y", ny + 4);
+        rankTxt.setAttribute("text-anchor", "middle");
+        rankTxt.setAttribute("font-size", "11");
+        rankTxt.setAttribute("font-weight", "700");
+        rankTxt.setAttribute("fill", "#FFFFFF");
+        rankTxt.textContent = `#${i + 1}`;
+        nodesG.appendChild(rankTxt);
+
+        // Book Title Label below node
+        const shortTitle =
+          item.book["Book-Title"].length > 22
+            ? item.book["Book-Title"].slice(0, 20) + "…"
+            : item.book["Book-Title"];
+
+        const titleTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        titleTxt.setAttribute("x", nx);
+        titleTxt.setAttribute("y", ny + 33);
+        titleTxt.setAttribute("text-anchor", "middle");
+        titleTxt.setAttribute("font-size", "10.5");
+        titleTxt.setAttribute("font-weight", "700");
+        titleTxt.setAttribute("fill", "#1E1B18");
+        titleTxt.textContent = shortTitle;
+        nodesG.appendChild(titleTxt);
+      });
+
+      // Center Query Node
+      const centerCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      centerCircle.setAttribute("cx", cx);
+      centerCircle.setAttribute("cy", cy);
+      centerCircle.setAttribute("r", 28);
+      centerCircle.setAttribute("fill", "#1E1B18");
+      centerCircle.setAttribute("stroke", "#C85A32");
+      centerCircle.setAttribute("stroke-width", "3.5");
+      nodesG.appendChild(centerCircle);
+
+      const centerIcon = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      centerIcon.setAttribute("x", cx);
+      centerIcon.setAttribute("y", cy + 4);
+      centerIcon.setAttribute("text-anchor", "middle");
+      centerIcon.setAttribute("font-size", "11");
+      centerIcon.setAttribute("font-weight", "700");
+      centerIcon.setAttribute("fill", "#FAF7F2");
+      centerIcon.textContent = "BUSCA";
+      nodesG.appendChild(centerIcon);
+    }
+
+    // =========================================================================
+    // 7. GAMIFICATION, SHELF & CSV UPLOAD HANDLERS
+    // =========================================================================
+    function addXP(amount, message) {
+      gamification.xp += amount;
+      updateGamificationHUD();
+      if (message) {
+        showToast(`+${amount} XP • ${message}`, "forest");
+      }
+    }
+
+    function updateGamificationHUD() {
+      const xp = gamification.xp;
+      const level = Math.floor(xp / 100) + 1;
+      const progress = xp % 100;
+
+      const ranks = [
+        "Leitor Iniciante",
+        "Explorador de Temas",
+        "Cartógrafo de Nós",
+        "Arquiteto Semântico",
+        "Mestre Curador Literário"
+      ];
+      const rankTitle = ranks[Math.min(level - 1, ranks.length - 1)];
+
+      document.getElementById("hud-level-badge").textContent = `Nv.${level}`;
+      document.getElementById("hud-rank-title").textContent = rankTitle;
+      document.getElementById("hud-xp-text").textContent = `${xp} / ${level * 100} XP`;
+      document.getElementById("hud-xp-bar").style.width = `${Math.max(6, progress)}%`;
+      document.getElementById("hud-badges-count").textContent = `${gamification.unlockedBadges.size}/${BADGES_CATALOG.length}`;
+      document.getElementById("hud-shelf-count").textContent = savedBooks.size;
+    }
+
+    function checkAchievements() {
+      const unlock = (id) => {
+        if (!gamification.unlockedBadges.has(id)) {
+          gamification.unlockedBadges.add(id);
+          const badge = BADGES_CATALOG.find(b => b.id === id);
+          if (badge) {
+            showToast(`🏆 Conquista Desbloqueada: ${badge.title}!`, "amber");
+          }
+        }
+      };
+
+      if (gamification.searchesCount >= 1) unlock("first_node");
+      if (gamification.interthematicFound) unlock("interthematic");
+      if (gamification.usedSeedMode) unlock("seed_explorer");
+      if (gamification.usedBaseline) unlock("scientist");
+      if (savedBooks.size >= 3) unlock("collector");
+      if (gamification.uploadedCSV) unlock("data_importer");
+
+      updateGamificationHUD();
+      renderBadgesModal();
+    }
+
+    function toggleSaveBook(title) {
+      if (savedBooks.has(title)) {
+        savedBooks.delete(title);
+      } else {
+        savedBooks.add(title);
+        addXP(15, `"${title}" salvo na estante!`);
+      }
+      checkAchievements();
+      renderShelfModal();
+      // Refresh visible save buttons if recommendations are shown
+      document.querySelectorAll("#recommendations-list button").forEach(btn => {
+        if (btn.textContent.includes("Salvar") || btn.textContent.includes("Salvo")) {
+          const isNowSaved = savedBooks.has(title);
+          if (btn.getAttribute("onclick")?.includes(title.replace(/'/g, "\\'"))) {
+            btn.innerHTML = `<span>${isNowSaved ? "🔖 Salvo" : "+ Salvar"}</span>`;
+            btn.className = `px-3 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1 ${
+              isNowSaved
+                ? "bg-forest text-white border-forest"
+                : "bg-white hover:bg-parchment text-ink border-[#D8CEB8]"
+            }`;
+          }
+        }
+      });
+    }
+
+    function renderBadgesModal() {
+      const grid = document.getElementById("badges-grid");
+      grid.innerHTML = "";
+      BADGES_CATALOG.forEach(b => {
+        const unlocked = gamification.unlockedBadges.has(b.id);
+        const card = document.createElement("div");
+        card.className = `p-3.5 rounded-xl border flex items-start gap-3 ${
+          unlocked ? "bg-white border-amberbook/50 shadow-xs" : "bg-parchment/50 border-[#E4DBC8] opacity-60"
+        }`;
+        card.innerHTML = `
+          <div class="text-2xl">${unlocked ? b.icon : "🔒"}</div>
+          <div>
+            <h4 class="text-xs font-bold text-ink">${b.title}</h4>
+            <p class="text-[11px] text-stone-600 mt-0.5">${b.desc}</p>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderShelfModal() {
+      const list = document.getElementById("shelf-list");
+      list.innerHTML = "";
+      if (savedBooks.size === 0) {
+        list.innerHTML = `<p class="text-xs text-stone-500 text-center py-6">Sua estante ainda está vazia. Clique em <strong>"+ Salvar"</strong> nos livros recomendados!</p>`;
+        return;
+      }
+      savedBooks.forEach(title => {
+        const book = booksData.find(b => b["Book-Title"] === title);
+        if (!book) return;
+        const row = document.createElement("div");
+        row.className = "p-3 rounded-xl bg-white border border-[#E4DBC8] flex items-center justify-between gap-3";
+        row.innerHTML = `
+          <div>
+            <h4 class="font-serif font-bold text-sm text-ink">${book["Book-Title"]}</h4>
+            <p class="text-xs text-stone-500">${book["Book-Author"]} • <span class="text-forest font-semibold">${book["Theme"]}</span></p>
+          </div>
+          <button onclick="toggleSaveBook('${title.replace(/'/g, "\\'")}')" class="text-xs text-terracotta font-semibold hover:underline">Remover</button>
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    function toggleModal(id) {
+      const el = document.getElementById(id);
+      el.classList.toggle("hidden");
+      if (id === "modal-conquistas") renderBadgesModal();
+      if (id === "modal-estante") renderShelfModal();
+    }
+
+    // Robust CSV Parser supporting comma or semicolon & quoted fields
+    function parseCSV(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+      if (lines.length < 2) return [];
+
+      const delimiter = lines[0].includes(";") && !lines[0].includes(",") ? ";" : ",";
+
+      const splitCSVLine = (line) => {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') {
+            inQuotes = !inQuotes;
+          } else if (ch === delimiter && !inQuotes) {
+            result.push(current.trim());
+            current = "";
+          } else {
+            current += ch;
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+
+      const headers = splitCSVLine(lines[0]).map(h => h.replace(/^"|"$/g, "").trim());
+      const rows = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = splitCSVLine(lines[i]);
+        const obj = {};
+        headers.forEach((h, idx) => {
+          obj[h] = (values[idx] || "").replace(/^"|"$/g, "").trim();
+        });
+        rows.push(obj);
+      }
+      return rows;
+    }
+
+    function handleCSVUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const parsed = parseCSV(e.target.result);
+        const valid = parsed.filter(r => (r["Book-Title"] || r["title"]) && (r["Description"] || r["Theme"]));
+
+        if (valid.length < 2) {
+          showToast("⚠️ CSV inválido. Verifique as colunas: Book-Title, Book-Author, Theme, Description.", "amber");
+          return;
+        }
+
+        selectedKeywords = [];
+        renderSelectedKeywords();
+        buildTFIDFModel(valid);
+        document.getElementById("btn-reset-db").classList.remove("hidden");
+
+        gamification.uploadedCSV = true;
+        addXP(40, `Base CSV carregada com ${valid.length} livros!`);
+        checkAchievements();
+      };
+      reader.readAsText(file, "UTF-8");
+    }
+
+    function resetToDefaultDataset() {
+      selectedKeywords = [];
+      renderSelectedKeywords();
+      buildTFIDFModel(DEFAULT_BOOKS);
+      document.getElementById("btn-reset-db").classList.add("hidden");
+      showToast("📚 Base literária padrão restaurada!", "forest");
+    }
+
+    function showToast(message, tone = "forest") {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      const bgClass = tone === "amber" ? "bg-ink border-amberbook text-white" : "bg-forest border-emerald-300/30 text-white";
+      toast.className = `pointer-events-auto px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold animate-pop ${bgClass}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transition = "opacity 0.3s ease";
+        setTimeout(() => toast.remove(), 320);
+      }, 3400);
+    }
+
+    // Initialize Application on Load
+    window.addEventListener("DOMContentLoaded", () => {
+      buildTFIDFModel(DEFAULT_BOOKS);
+      updateGamificationHUD();
+      renderBadgesModal();
+    });
+  </script>
+</body>
+</html>
